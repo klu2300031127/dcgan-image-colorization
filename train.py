@@ -1,70 +1,99 @@
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-from models.generator import Generator
+from models.generator import UNetGenerator
 from models.discriminator import Discriminator
 
+# Device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-batch_size = 32
+# Hyperparameters
+epochs = 200
+batch_size = 16
 lr = 0.0002
-epochs = 30
+image_size = 128
 
+# Dataset Transform
 transform = transforms.Compose([
-    transforms.Resize((64, 64)),
+    transforms.Resize((image_size, image_size)),
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))
 ])
 
-# IMPORTANT: root is dataset
-dataset = datasets.ImageFolder(
-    root="dataset",
-    transform=transform
-)
-
+# Dataset Folder Structure:
+# dataset/
+#    class_folder/
+#        image1.jpg
+#        image2.jpg
+dataset = datasets.ImageFolder("dataset", transform=transform)
 loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-G = Generator().to(device)
+# Initialize Models
+G = UNetGenerator().to(device)
 D = Discriminator().to(device)
 
-criterion = nn.BCELoss()
+# Loss Functions
+criterion_GAN = nn.BCELoss()
+criterion_L1 = nn.L1Loss()
+
+# Optimizers
 optimizer_G = optim.Adam(G.parameters(), lr=lr, betas=(0.5, 0.999))
 optimizer_D = optim.Adam(D.parameters(), lr=lr, betas=(0.5, 0.999))
 
 print("Training Started...")
 
 for epoch in range(epochs):
-    for real_imgs, _ in loader:
+    for i, (imgs, _) in enumerate(loader):
 
-        real_imgs = real_imgs.to(device)
+        imgs = imgs.to(device)
 
-        # Convert to grayscale
-        gray_imgs = real_imgs.mean(dim=1, keepdim=True)
+        # Convert RGB to grayscale
+        gray = torch.mean(imgs, dim=1, keepdim=True)
 
-        real_labels = torch.ones(real_imgs.size(0), 1).to(device)
-        fake_labels = torch.zeros(real_imgs.size(0), 1).to(device)
-
-        # Train Discriminator
-        fake_imgs = G(gray_imgs)
-
-        d_real = criterion(D(real_imgs), real_labels)
-        d_fake = criterion(D(fake_imgs.detach()), fake_labels)
-        d_loss = d_real + d_fake
-
-        optimizer_D.zero_grad()
-        d_loss.backward()
-        optimizer_D.step()
-
+        # =========================
         # Train Generator
-        g_loss = criterion(D(fake_imgs), real_labels)
-
+        # =========================
         optimizer_G.zero_grad()
-        g_loss.backward()
+
+        fake_imgs = G(gray)
+        pred_fake = D(gray, fake_imgs)
+
+        valid = torch.ones_like(pred_fake).to(device)
+
+        loss_GAN = criterion_GAN(pred_fake, valid)
+        loss_L1 = criterion_L1(fake_imgs, imgs)
+
+        loss_G = loss_GAN + 100 * loss_L1
+        loss_G.backward()
         optimizer_G.step()
 
-    print(f"Epoch [{epoch+1}/{epochs}]  D Loss: {d_loss.item():.4f}  G Loss: {g_loss.item():.4f}")
+        # =========================
+        # Train Discriminator
+        # =========================
+        optimizer_D.zero_grad()
 
+        pred_real = D(gray, imgs)
+        valid = torch.ones_like(pred_real).to(device)
+        loss_real = criterion_GAN(pred_real, valid)
+
+        pred_fake = D(gray, fake_imgs.detach())
+        fake = torch.zeros_like(pred_fake).to(device)
+        loss_fake = criterion_GAN(pred_fake, fake)
+
+        loss_D = (loss_real + loss_fake) / 2
+        loss_D.backward()
+        optimizer_D.step()
+
+        if i % 50 == 0:
+            print(f"Epoch [{epoch+1}/{epochs}] "
+                  f"Batch [{i}/{len(loader)}] "
+                  f"Loss D: {loss_D.item():.4f}, "
+                  f"Loss G: {loss_G.item():.4f}")
+
+# Save Generator
 torch.save(G.state_dict(), "generator.pth")
-print("Training Completed Successfully ✅")
+
+print("Training Completed. Model saved as generator.pth")
