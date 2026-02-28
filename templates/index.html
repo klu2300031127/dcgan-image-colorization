@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DCGAN Image Colorization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <!-- Vanta NET -->
+    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.net.min.js"></script>
+</head>
+
+<body>
+
+<div id="vanta-bg"></div>
+
+<div class="container">
+    <h1>DCGAN Image Colorization</h1>
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="image" required>
+        <button type="submit">Colorize</button>
+    </form>
+
+    {% if input_image %}
+    <div class="result">
+        <div>
+            <h3>Grayscale</h3>
+            <img src="{{ url_for('static', filename=input_image) }}">
+        </div>
+        <div>
+            <h3>Colorized</h3>
+            <img src="{{ url_for('static', filename=output_image) }}">
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+let vantaEffect;
+
+function initVanta() {
+  if (vantaEffect) vantaEffect.destroy();
+
+  vantaEffect = VANTA.NET({
+    el: "#vanta-bg",
+    mouseControls: true,
+    touchControls: true,
+    gyroControls: false,
+    backgroundColor: 0x0f2027,
+    color: 0x3f8cff,
+    points: 14.0,
+    maxDistance: 22.0,
+    spacing: 18.0
+  });
+}
+
+window.addEventListener("load", initVanta);
+window.addEventListener("resize", initVanta);
+</script>
+
+</body>
+</html>
